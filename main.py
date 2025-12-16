@@ -1,5 +1,5 @@
 """
-Burp Suite Professional Automated Scanner - CORRECTED VERSION
+Burp Suite Professional Automated Scanner - WINDOWS VERSION (FIXED)
 Uses burp-rest-api extension for proper API access
 Scans multiple websites with config and exports vulnerabilities as XML
 
@@ -20,23 +20,20 @@ from xml.dom import minidom
 
 # ==================== CONFIGURATION ====================
 # IMPORTANT: Download burp-rest-api.jar from https://github.com/vmware/burp-rest-api/releases
-BURP_JAR_PATH = r"C:\Program Files\BurpSuitePro\burpsuite_pro.jar"  # Windows
-BURP_REST_API_JAR = r"burp-rest-api-2.3.2.jar"  # Place in same directory as script
-
-# For Mac: /Applications/Burp Suite Professional.app/Contents/Java/app/burpsuite_pro.jar
-# For Linux: /opt/BurpSuitePro/burpsuite_pro.jar
+BURP_JAR_PATH = r"C:\Users\varun.bhat\Downloads\burpsuite_pro_v2025.11.5.jar"  # Your Burp Suite JAR
+BURP_REST_API_JAR = r"C:\Users\varun.bhat\Downloads\burp-rest-api-2.3.2.jar"  # REST API JAR path
 
 BURP_API_URL = "http://localhost:8090"  # burp-rest-api default port
-BURP_API_KEY = "your-custom-api-key-here"  # Set a secure API key
+BURP_API_KEY = "AK3cMFNtZqNhz2PeC0W5whjJGyThGysI"  # Your API key
 
 INPUT_FILE = "input/websites.txt"
-CONFIG_FILE = "config/burp_config.json"  # Burp project config file
+CONFIG_FILE = "config/burp_config.json"  # Optional Burp project config file
 OUTPUT_DIR = "output"
 
 # API Headers
 API_HEADERS = {
     "Content-Type": "application/json",
-    "API-KEY": BURP_API_KEY  # Custom API key for authentication
+    "API-KEY": BURP_API_KEY
 }
 
 
@@ -68,62 +65,71 @@ class BurpManager:
         """Start Burp Suite with REST API enabled"""
         print("[*] Starting Burp Suite Professional with REST API...")
         
-        # Check if already running
+        # Clean up any orphaned temp files first
+        self.cleanup_orphaned_temp_files()
+        
+        # Check if our previous instance is still running
         if self.is_running():
-            print("[!] Burp Suite is already running. Killing existing instance...")
+            print("[!] Our Burp Suite instance is still running. Killing it...")
             self.kill()
             time.sleep(5)
+        
+        # Verify JAR files exist
+        if not os.path.exists(self.burp_jar):
+            print(f"[!] ERROR: Burp Suite JAR not found: {self.burp_jar}")
+            return False
+        
+        if not os.path.exists(self.rest_api_jar):
+            print(f"[!] ERROR: burp-rest-api JAR not found: {self.rest_api_jar}")
+            return False
         
         try:
             # Create temporary project file
             self.temp_project = f"temp_burp_project_{int(time.time())}.burp"
             
-            # Build command for Windows
-            if os.name == 'nt':
-                cmd = [
-                    "java",
-                    "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
-                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
-                    "-jar",
-                    self.rest_api_jar,
-                    "--burp.jar=" + self.burp_jar,
-                    f"--apikey={self.api_key}",
-                    "--headless.mode=true",
-                    f"--project-file={self.temp_project}",
-                    f"--config-file={self.config_file}" if os.path.exists(self.config_file) else ""
-                ]
-            else:
-                # Linux/Mac
-                cmd = [
-                    "java",
-                    "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
-                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
-                    "-cp",
-                    f"{self.burp_jar}:{self.rest_api_jar}",
-                    "org.springframework.boot.loader.launch.JarLauncher",
-                    f"--apikey={self.api_key}",
-                    "--headless.mode=true",
-                    f"--project-file={self.temp_project}",
-                    f"--config-file={self.config_file}" if os.path.exists(self.config_file) else ""
-                ]
+            # Build command for Windows - CORRECTED VERSION
+            # Use -cp (classpath) with semicolon separator on Windows
+            cmd = [
+                "java",
+                "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "-Xmx2g",  # Allocate 2GB RAM
+                "-Djava.awt.headless=true",  # Run headless
+                "-cp",
+                f"{self.burp_jar};{self.rest_api_jar}",  # Semicolon for Windows
+                "com.vmware.burp.extension.BurpApplication",  # Main class
+                f"--burp.jar={self.burp_jar}",
+                f"--apikey={self.api_key}",
+                "--headless.mode=true",
+                f"--project-file={self.temp_project}"
+            ]
             
-            # Remove empty strings
-            cmd = [c for c in cmd if c]
+            # Add config file if it exists
+            if os.path.exists(self.config_file):
+                cmd.append(f"--config-file={self.config_file}")
             
-            print(f"[*] Executing: {' '.join(cmd)}")
+            print(f"[*] Executing command...")
+            print(f"[*] Burp JAR: {self.burp_jar}")
+            print(f"[*] REST API JAR: {self.rest_api_jar}")
+            print(f"[*] Project file: {self.temp_project}")
             
+            # Start process
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             
             print(f"[+] Burp Suite started (PID: {self.process.pid})")
+            print(f"[*] Burp is running in HEADLESS mode (no GUI will open)")
             return True
             
         except Exception as e:
             print(f"[!] Failed to start Burp Suite: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def is_running(self):
@@ -182,6 +188,7 @@ class BurpManager:
             # Clean up temp project file
             if self.temp_project and os.path.exists(self.temp_project):
                 try:
+                    time.sleep(2)  # Wait a bit before cleanup
                     os.remove(self.temp_project)
                     print(f"[+] Cleaned up temporary project: {self.temp_project}")
                 except Exception as e:
@@ -191,30 +198,50 @@ class BurpManager:
             self.process = None
             time.sleep(3)  # Wait for cleanup
     
-    def wait_for_api(self, timeout=90):
+    def wait_for_api(self, timeout=120):
         """Wait for Burp REST API to become available"""
         print("[*] Waiting for Burp REST API to become ready...")
+        print("[*] This may take 30-60 seconds on first start...")
         
         start_time = time.time()
+        last_error = None
+        
         while time.time() - start_time < timeout:
             try:
+                # Check if process is still alive
+                if not self.is_running():
+                    print("[!] Burp process died unexpectedly")
+                    return False
+                
                 # Test with version endpoint
                 response = requests.get(
                     f"{BURP_API_URL}/burp/versions",
                     headers=API_HEADERS,
                     timeout=5
                 )
+                
                 if response.status_code == 200:
                     version_info = response.json()
-                    print(f"[+] Burp API is ready - Version: {version_info.get('burpVersion', 'Unknown')}")
+                    print(f"[+] Burp API is ready!")
+                    print(f"[+] Burp Version: {version_info.get('burpVersion', 'Unknown')}")
+                    print(f"[+] REST API Version: {version_info.get('burpRestApiVersion', 'Unknown')}")
                     return True
-            except requests.exceptions.RequestException as e:
-                pass
+                else:
+                    last_error = f"HTTP {response.status_code}"
+                    
+            except requests.exceptions.ConnectionError:
+                last_error = "Connection refused (API not ready yet)"
+            except requests.exceptions.Timeout:
+                last_error = "Request timeout"
+            except Exception as e:
+                last_error = str(e)
             
-            print(f"[*] Waiting... ({int(time.time() - start_time)}s)")
+            elapsed = int(time.time() - start_time)
+            print(f"[*] Waiting... ({elapsed}s) - {last_error}")
             time.sleep(5)
         
-        print("[!] Timeout waiting for Burp API")
+        print(f"[!] Timeout waiting for Burp API after {timeout}s")
+        print(f"[!] Last error: {last_error}")
         return False
 
 
@@ -252,11 +279,12 @@ class BurpAPIClient:
             print(f"[!] Error starting spider: {e}")
             return False
     
-    def wait_for_spider(self):
+    def wait_for_spider(self, timeout=1800):
         """Wait for spider to complete"""
         print(f"[*] Waiting for spider to complete...")
         
-        while True:
+        start_time = time.time()
+        while time.time() - start_time < timeout:
             try:
                 response = requests.get(
                     f"{self.api_url}/burp/spider/status",
@@ -276,6 +304,9 @@ class BurpAPIClient:
                 print(f"[!] Error checking spider status: {e}")
             
             time.sleep(10)
+        
+        print("[!] Spider timeout")
+        return False
     
     def active_scan(self, target_url):
         """Start active scan"""
@@ -304,11 +335,12 @@ class BurpAPIClient:
             print(f"[!] Error starting active scan: {e}")
             return False
     
-    def wait_for_scan(self):
+    def wait_for_scan(self, timeout=3600):
         """Wait for active scan to complete"""
         print(f"[*] Waiting for active scan to complete...")
         
-        while True:
+        start_time = time.time()
+        while time.time() - start_time < timeout:
             try:
                 response = requests.get(
                     f"{self.api_url}/burp/scanner/status",
@@ -328,6 +360,9 @@ class BurpAPIClient:
                 print(f"[!] Error checking scan status: {e}")
             
             time.sleep(15)
+        
+        print("[!] Scan timeout")
+        return False
     
     def get_issues(self):
         """Get all discovered issues/vulnerabilities"""
@@ -342,7 +377,8 @@ class BurpAPIClient:
             
             if response.status_code == 200:
                 issues = response.json()
-                print(f"[+] Retrieved {len(issues.get('issues', []))} issues")
+                issue_count = len(issues.get('issues', []))
+                print(f"[+] Retrieved {issue_count} issues")
                 return issues
             else:
                 print(f"[!] Failed to get issues: {response.status_code}")
@@ -479,19 +515,12 @@ def sanitize_filename(url):
 def main():
     """Main execution flow"""
     print("=" * 70)
-    print("Burp Suite Professional - Automated Scanner with REST API")
+    print("Burp Suite Professional - Automated Scanner (Windows)")
     print("=" * 70)
     
     # Create directories
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(os.path.dirname(INPUT_FILE), exist_ok=True)
-    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-    
-    # Verify REST API JAR exists
-    if not os.path.exists(BURP_REST_API_JAR):
-        print(f"[!] ERROR: burp-rest-api JAR not found: {BURP_REST_API_JAR}")
-        print("[!] Download from: https://github.com/vmware/burp-rest-api/releases")
-        return
     
     # Load websites
     websites = read_websites(INPUT_FILE)
@@ -540,6 +569,8 @@ def main():
             
         except Exception as e:
             print(f"[!] Error during scan: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Kill Burp Suite to clear RAM
         burp_manager.kill()
